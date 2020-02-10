@@ -2,6 +2,8 @@
 
 Local SSL enables you to redirect an no-secure - even local (localhost) - domain to an secure **HTTPS** and **HTTP/2** virtual domain.
 
+It's pretty good for test your **PWA** local applications :)
+
 # Version
 
 See the *version* file on the project's root folder.
