@@ -1,0 +1,99 @@
+#!/bin/bash
+
+# SSL dir
+SSLDIR=./ssl
+
+# The default DOMAIN value
+DOMAIN=localhost
+
+# Sets DOMAIN from the argument
+if [ -n "$1" ]; then
+    DOMAIN=$1;
+fi;
+
+# Purge old data and create new DOMAIN dir
+purge() {
+    rm -rf ${SSLDIR}/${DOMAIN}
+    mkdir ${SSLDIR}/${DOMAIN}
+}
+
+# Copy config files from templates
+copy() {
+    echo Copying files
+}
+
+# Replace data on config files
+replace() {
+    # Create config files from templates
+    cp ./cfg/csr ${SSLDIR}/${DOMAIN}/csr
+    cp ./cfg/x509 ${SSLDIR}/${DOMAIN}/x509
+
+    # Replacing strings on templates
+    sed -i "s|##DOMAIN##|${DOMAIN}|g" ${SSLDIR}/${DOMAIN}/x509
+    sed -i "s|##DOMAIN##|${DOMAIN}|g" ${SSLDIR}/${DOMAIN}/csr
+}
+
+# Clean up unused files
+clean() {
+    # Clean up csr config file
+    rm -f ${SSLDIR}/${DOMAIN}/csr
+    # Clean up x509 config file
+    rm -f ${SSLDIR}/${DOMAIN}/x509
+    # Clean up serial file
+    rm -f ${SSLDIR}/${DOMAIN}/ca.srl
+	# Clean up serial ca key file
+    rm -f ${SSLDIR}/${DOMAIN}/ca.key
+	# Clean up serial server csr file
+    rm -f ${SSLDIR}/${DOMAIN}/server.csr
+}
+
+# Generate key/crt files
+generate() {
+    echo Generating ca.key
+    openssl genrsa -out ${SSLDIR}/${DOMAIN}/ca.key 2048 >/dev/null 2>&1
+
+    echo Generating ca.pem from csr template file
+    openssl req -x509 -new -nodes -key ${SSLDIR}/${DOMAIN}/ca.key -sha256 -days 2048 -out ${SSLDIR}/${DOMAIN}/ca.pem --config ${SSLDIR}/${DOMAIN}/csr >/dev/null 2>&1
+
+    echo Generating server.csr and server.key using csr template file
+    openssl req -new -sha256 -nodes -out ${SSLDIR}/${DOMAIN}/server.csr -newkey rsa:2048 -keyout ${SSLDIR}/${DOMAIN}/server.key -config ${SSLDIR}/${DOMAIN}/csr >/dev/null 2>&1
+
+    echo Generating \(with ca.key\) and signing \(with server.csr\) server.pem.
+    echo Generating server.crt using x509 template file
+    openssl x509 -req -in ${SSLDIR}/${DOMAIN}/server.csr -CA ${SSLDIR}/${DOMAIN}/ca.pem -CAkey ${SSLDIR}/${DOMAIN}/ca.key -CAcreateserial -out ${SSLDIR}/${DOMAIN}/server.crt -days 1024 -sha256 -extfile ${SSLDIR}/${DOMAIN}/x509 >/dev/null 2>&1
+}
+
+# Main function
+main() {
+    purge
+    replace
+    generate
+    copy
+    clean
+}
+
+if [ ! -d ${SSLDIR} ]; then
+	mkdir ${SSLDIR};
+fi;
+
+if [ -d ${SSLDIR}/${DOMAIN} ]; then
+    HAS_ALL_FILES=true;
+    echo ${SSLDIR}/${DOMAIN} already exists.
+    echo Checking required files:
+    for i in ca.key ca.pem server.crt server.csr server.key; do
+        if [ -f ${SSLDIR}/${DOMAIN}/${i} ]; then
+            echo [200] ${i}
+        else
+            echo [404] ${i}
+            HAS_ALL_FILES=false;
+        fi;
+    done;
+    if ! $HAS_ALL_FILES; then
+        echo Recreating ${DOMAIN}
+        main
+    fi;
+else
+    main
+fi;
+
+exit 0;
